@@ -1,12 +1,14 @@
 package com.example.polizas.services;
 
-import com.example.polizas.model.Poliza;
-import com.example.polizas.model.PolizaExternal;
-import com.example.polizas.model.Siniestro;
-import com.example.polizas.model.SiniestroExternal;
+import com.example.polizas.model.*;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -14,7 +16,7 @@ import java.util.stream.Collectors;
 @Service
 public class PolizasService {
 
-    //TODO: gestión de autorización,gestión de errores
+    //TODO: gestión de errores
 
     private final RestClient restClient;
 
@@ -23,33 +25,51 @@ public class PolizasService {
     }
 
     public List<Poliza> getPolizasByDni(String dni) {
-        List<PolizaExternal> externals = restClient.get()
-                .uri("/polizas?dni={dni}", dni)
-                .retrieve()
-                .body(new ParameterizedTypeReference<List<PolizaExternal>>() {});
+        try{
+            List<PolizaExternal> externals = restClient.get()
+                    .uri("/polizas?dni={dni}", dni)
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<List<PolizaExternal>>() {});
 
-        return externals.stream()
-                .map(this::toPoliza)
-                .collect(Collectors.toList());
+            return externals.stream()
+                    .map(this::toPoliza)
+                    .collect(Collectors.toList());
+        } catch (RestClientException e) {
+            throw new UpstreamServiceException("Error al obtener polizas", e);
+        }
+
     }
 
-    public Poliza getPolizaById(String polizaId) {
-        PolizaExternal ext = restClient.get()
-                .uri("/polizas/{polizaId}", polizaId)
-                .retrieve()
-                .body(PolizaExternal.class);
+    public Poliza getPolizaById(String polizaId, String dni) {
+        checkOwnership(polizaId, dni);
+        try {
+            PolizaExternal ext = restClient.get()
+                    .uri("/polizas/{polizaId}", polizaId)
+                    .retrieve()
+                    .body(PolizaExternal.class);
+            return toPoliza(ext);
 
-        return toPoliza(ext);
+        } catch (HttpClientErrorException.NotFound e) {
+            throw new ResourceNotFoundException("Poliza no encontrada: " + polizaId);
+        } catch (RestClientException e) {
+            throw new UpstreamServiceException("Error al obtener poliza", e);
+        }
     }
 
-    public List<String> getCondiciones(String polizaId) {
-        return restClient.get()
-                .uri("/polizas/{polizaId}/condiciones", polizaId)
-                .retrieve()
-                .body(new ParameterizedTypeReference<List<String>>() {});
+    public List<String> getCondiciones(String polizaId, String dni) {
+        try{
+            checkOwnership(polizaId, dni);
+            return restClient.get()
+                    .uri("/polizas/{polizaId}/condiciones", polizaId)
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<List<String>>() {});
+        } catch (RestClientException e){
+            throw new UpstreamServiceException("Error al obtener poliza", e);
+        }
     }
 
-    public List<Siniestro> getSiniestros(String polizaId) {
+    public List<Siniestro> getSiniestros(String polizaId, String dni) {
+        checkOwnership(polizaId, dni);
         List<SiniestroExternal> externals = restClient.get()
                 .uri("/polizas/{polizaId}/siniestros", polizaId)
                 .retrieve()
@@ -58,6 +78,14 @@ public class PolizasService {
         return externals.stream()
                 .map(this::toSiniestro)
                 .collect(Collectors.toList());
+    }
+
+    private void checkOwnership(String polizaId, String dni) {
+        List<Poliza> userPolizas = getPolizasByDni(dni);
+        boolean owns = userPolizas.stream().anyMatch(p -> p.getPolizaId().equals(polizaId));
+        if (!owns) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied to poliza " + polizaId);
+        }
     }
 
     private Poliza toPoliza(PolizaExternal ext) {

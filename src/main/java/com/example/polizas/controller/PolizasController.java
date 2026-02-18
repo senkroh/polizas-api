@@ -25,17 +25,20 @@ public class PolizasController {
     }
 
     @GetMapping("/{polizaId}")
-    public Poliza getPolizaById(@PathVariable String polizaId) {
-        return polizasService.getPolizaById(polizaId);
+    public Poliza getPolizaById(@PathVariable String polizaId, Principal principal) {
+        String dni = principal.getName();
+        return polizasService.getPolizaById(polizaId, dni);
     }
 
     @GetMapping("/{polizaId}/condiciones")
-    public List<String> getCondiciones(@PathVariable String polizaId) {
-        return polizasService.getCondiciones(polizaId);
+    public List<String> getCondiciones(@PathVariable String polizaId, Principal principal) {
+        String dni = principal.getName();
+        return polizasService.getCondiciones(polizaId, dni);
     }
 
     @GetMapping("/{polizaId}/siniestros")
-    public List<Siniestro> getSiniestros(@PathVariable String polizaId) {
-        return polizasService.getSiniestros(polizaId);
+    public List<Siniestro> getSiniestros(@PathVariable String polizaId, Principal principal) {
+        String dni = principal.getName();
+        return polizasService.getSiniestros(polizaId, dni);
     }
 }

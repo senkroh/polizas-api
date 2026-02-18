@@ -1,9 +1,13 @@
 package com.example.polizas.services;
 
+import com.example.polizas.model.ResourceNotFoundException;
 import com.example.polizas.model.Siniestro;
 import com.example.polizas.model.SiniestroExternal;
+import com.example.polizas.model.UpstreamServiceException;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 @Service
 public class SiniestrosService {
@@ -15,12 +19,19 @@ public class SiniestrosService {
     }
 
     public Siniestro getSiniestroById(String siniestroId) {
-        SiniestroExternal ext = restClient.get()
-                .uri("/siniestros/{siniestroId}", siniestroId)
-                .retrieve()
-                .body(SiniestroExternal.class);
+        try{
+            SiniestroExternal ext = restClient.get()
+                    .uri("/siniestros/{siniestroId}", siniestroId)
+                    .retrieve()
+                    .body(SiniestroExternal.class);
 
-        return toSiniestro(ext);
+            return toSiniestro(ext);
+        } catch (HttpClientErrorException.NotFound e) {
+            throw new ResourceNotFoundException("Siniestro no encontrado: " + siniestroId);
+        } catch (RestClientResponseException e) {
+            throw new UpstreamServiceException("Error al obtener siniestro", e);
+        }
+
     }
 
     private Siniestro toSiniestro(SiniestroExternal ext) {
