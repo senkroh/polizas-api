@@ -14,6 +14,8 @@ import java.util.stream.Collectors;
 @Service
 public class PolizasService {
 
+    //TODO: gestión de autorización,gestión de errores
+
     private final RestClient restClient;
 
     public PolizasService(RestClient restClient) {

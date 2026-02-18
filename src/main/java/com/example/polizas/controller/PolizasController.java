@@ -5,6 +5,7 @@ import com.example.polizas.model.Siniestro;
 import com.example.polizas.services.PolizasService;
 import org.springframework.web.bind.annotation.*;
 
+import java.security.Principal;
 import java.util.List;
 
 @RestController
@@ -18,7 +19,8 @@ public class PolizasController {
     }
 
     @GetMapping
-    public List<Poliza> getPolizasByDni(@RequestParam String dni) {
+    public List<Poliza> getPolizasByDni(Principal principal) {
+        String dni = principal.getName();
         return polizasService.getPolizasByDni(dni);
     }
 

@@ -14,5 +14,4 @@ public class Siniestro {
     private String estado;
     private String fecha;
 
-
 }
