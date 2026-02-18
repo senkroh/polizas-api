@@ -9,7 +9,7 @@ import java.util.List;
 @Setter
 @Getter
 @ToString
-public class Poliza {
+public class PolizaExternal {
 
     private String polizaId;
     private String descripcion;

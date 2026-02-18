@@ -4,16 +4,15 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
 
-import java.util.List;
-
 @Setter
 @Getter
 @ToString
-public class Poliza {
+public class SiniestroExternal {
 
-    private String polizaId;
+    private String siniestroId;
     private String descripcion;
-    private List<String> coberturas;
+    private String estado;
+    private String fecha;
 
 
 }
