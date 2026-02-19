@@ -1,0 +1,23 @@
+app:
+  wiremock:
+    base-url: http://localhost:8081
+
+spring:
+  application:
+    name: insurance
+  cache:
+    caffeine:
+      spec: expireAfterWrite=60s
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      wiremock:
+        # percentage of failures needed to open the circuit
+        failure-rate-threshold: 50
+        # minimum number of calls before the circuit can open
+        minimum-number-of-calls: 5
+        # how long to wait before trying again (half-open)
+        wait-duration-in-open-state: 10s
+        # how many calls to allow in half-open state
+        permitted-number-of-calls-in-half-open-state: 3
