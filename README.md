@@ -24,6 +24,7 @@ src/main/java/com/example/polizas/
 │   ├── ResourceNotFoundException.java
 │   └── UpstreamServiceException.java
 └── services/
+    ├── PolizasCacheService.java
     ├── PolizasService.java
     └── SiniestrosService.java
 ```
@@ -127,6 +128,54 @@ A `@RestControllerAdvice` that intercepts exceptions thrown anywhere in the app 
 | `ResourceNotFoundException` | `404 Not Found` |
 | `UpstreamServiceException` | `502 Bad Gateway` |
 | `ResponseStatusException` | Whatever status the exception carries (e.g. `403`) |
+
+---
+
+## Step 7 — Caching
+
+### Why caching is needed
+
+Every request that requires ownership verification calls `getPolizasByDni` to fetch all policies for the authenticated user. Without caching, this results in a WireMock call on every single request — even when the data hasn't changed.
+
+### How it works
+
+Spring Boot's built-in caching is enabled with `@EnableCaching` on `PolizasApplication`. The `@Cacheable` annotation on a method stores the result the first time it is called. On subsequent calls with the same arguments, the stored result is returned directly without calling WireMock.
+
+### `PolizasCacheService.java`
+
+The cached logic lives in a dedicated service rather than in `PolizasService`. This is necessary because Spring caching works through proxies — if a method calls another method within the same class, the proxy is bypassed and the cache is skipped. By extracting `getPolizasByDni` into its own class, every call goes through the proxy correctly.
+
+| Method | Cache name | Cache key |
+|---|---|---|
+| `getPolizasByDni(dni)` | `polizas` | `dni` |
+
+`PolizasService` delegates to `PolizasCacheService` for both the controller-facing `getPolizasByDni` and the internal `checkOwnership` call, ensuring both benefit from the same cache entry.
+
+### Cache flow
+
+```
+First call  → cache miss  → calls WireMock → stores result → returns result
+Second call → cache hit   → returns stored result (WireMock not called)
+```
+
+### Dependencies
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-cache</artifactId>
+</dependency>
+<dependency>
+    <groupId>com.github.ben-manes.caffeine</groupId>
+    <artifactId>caffeine</artifactId>
+</dependency>
+```
+
+Caffeine is used as the cache provider. A TTL can be configured in `application.properties` to automatically expire entries after a set time:
+
+```properties
+spring.cache.caffeine.spec=expireAfterWrite=60s
+```
 
 ---
 
