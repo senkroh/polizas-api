@@ -1,7 +1,7 @@
-package com.example.polizas.controller;
+package com.example.insurance.controller;
 
-import com.example.polizas.model.ResourceNotFoundException;
-import com.example.polizas.model.UpstreamServiceException;
+import com.example.insurance.exceptions.ResourceNotFoundException;
+import com.example.insurance.exceptions.UpstreamServiceException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;

@@ -9,10 +9,10 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.example</groupId>
-	<artifactId>polizas</artifactId>
+	<artifactId>insurance</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>polizas</name>
-	<description>Ejercicio polizas</description>
+	<name>insurance</name>
+	<description>Insurance exercise</description>
 	<url/>
 	<licenses>
 		<license/>
@@ -48,6 +48,19 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-cache</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-spring-boot3</artifactId>
+            <version>2.3.0</version>
         </dependency>
 	</dependencies>
 
