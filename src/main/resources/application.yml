@@ -1,6 +1,9 @@
 app:
   wiremock:
     base-url: http://localhost:8081
+  jwt:
+    secret: "insurance-application-jwt-secret-key-2026"
+    expiration: 3600000
 
 spring:
   application:
@@ -8,7 +11,13 @@ spring:
   cache:
     caffeine:
       spec: expireAfterWrite=60s
-
+  security:
+    oauth2:
+      client:
+        registration:
+          github:
+            client-id: Ov23liXOCZZOTDjSvGhC
+            client-secret: 8dae7ef9c2ff6bbe9aa1ed69ffd96dc9aaaaced0
 resilience4j:
   circuitbreaker:
     instances:
