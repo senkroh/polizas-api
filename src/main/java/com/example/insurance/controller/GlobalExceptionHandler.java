@@ -2,6 +2,7 @@ package com.example.insurance.controller;
 
 import com.example.insurance.exceptions.ResourceNotFoundException;
 import com.example.insurance.exceptions.UpstreamServiceException;
+import io.github.resilience4j.ratelimiter.RequestNotPermitted;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -30,6 +31,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleResponseStatus(ResponseStatusException ex) {
         return ResponseEntity.status(ex.getStatusCode())
                 .body(Map.of("error", ex.getReason()));
+    }
+
+    @ExceptionHandler(RequestNotPermitted.class)
+    @ResponseStatus(HttpStatus.TOO_MANY_REQUESTS)
+    public Map<String, String> handleRateLimitExceeded(RequestNotPermitted e) {
+        return Map.of("error", "Too many requests, please try again");
     }
 
 }

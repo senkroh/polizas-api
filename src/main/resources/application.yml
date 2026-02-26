@@ -3,7 +3,8 @@ app:
     base-url: http://localhost:8081
   jwt:
     secret: "insurance-application-jwt-secret-key-2026"
-    expiration: 1h
+    expiration: PT1H
+    refresh-expiration: P7D
 
 spring:
   application:
@@ -24,3 +25,20 @@ resilience4j:
         wait-duration-in-open-state: 10s
         # how many calls to allow in half-open state
         permitted-number-of-calls-in-half-open-state: 3
+  ratelimiter:
+    instances:
+      login:
+        limit-for-period: 5
+        limit-refresh-period: 1m
+        timeout-duration: 0
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, metrics, prometheus, info
+  endpoint:
+    health:
+      show-details: always
+  health:
+    circuitbreakers:
+      enabled: true
