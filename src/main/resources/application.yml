@@ -1,6 +1,9 @@
 app:
   wiremock:
     base-url: http://localhost:8081
+  jwt:
+    secret: "insurance-application-jwt-secret-key-2026"
+    expiration: 1h
 
 spring:
   application:
