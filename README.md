@@ -9,25 +9,39 @@ A Spring Boot REST API that acts as a **middleware** between a client (e.g. a fr
 ```
 src/main/java/com/example/insurance/
 ├── InsuranceApplication.java
+├── client/
+│   ├── ClaimClient.java
+│   └── PolicyClient.java
 ├── config/
+│   ├── OpenApiConfig.java
 │   ├── RestClientConfig.java
 │   └── SecurityConfig.java
 ├── controller/
+│   ├── AuthController.java
+│   ├── ClaimController.java
 │   ├── GlobalExceptionHandler.java
 │   ├── PolicyController.java
-│   └── ClaimController.java
+│   └── UserController.java
 ├── exceptions/
 │   ├── ResourceNotFoundException.java
 │   └── UpstreamServiceException.java
+├── external/
+│   ├── ExternalClaim.java
+│   └── ExternalPolicy.java
+├── mappers/
+│   ├── ClaimMapper.java
+│   └── PolicyMapper.java
 ├── model/
-│   ├── Policy.java
-│   ├── ExternalPolicy.java
 │   ├── Claim.java
-│   └── ExternalClaim.java
+│   └── Policy.java
+├── security/
+│   ├── JwtProperties.java
+│   ├── JwtService.java
+│   └── TokenStore.java
 └── services/
+    ├── ClaimService.java
     ├── PolicyCacheService.java
-    ├── PolicyService.java
-    └── ClaimService.java
+    └── PolicyService.java
 ```
 
 ---
@@ -52,18 +66,51 @@ app:
 This is the HTTP client used to call the external API. By declaring it as a `@Bean`, Spring can inject it wherever needed.
 
 ### `SecurityConfig.java`
-Adds authentication to all endpoints using **HTTP Basic Auth**. Two in-memory users are defined, using their national ID as username:
+Secures all endpoints using **JWT Bearer tokens** via Spring's OAuth2 Resource Server. The following paths are public (no token required):
 
-| Username | Password |
+| Path | Reason |
 |---|---|
-| `12345678A` | `password` |
-| `87654321B` | `password` |
+| `POST /auth/login` | Entry point to obtain a token |
+| `POST /auth/refresh` | Obtain a new access token using a refresh token |
+| `POST /auth/logout` | Invalidate the current token |
+| `/swagger-ui/**`, `/v3/api-docs/**` | API documentation |
+| `/actuator/**` | Health and metrics endpoints |
 
-Any request without valid credentials gets a `401 Unauthorized` automatically.
+Any other request without a valid JWT gets a `401 Unauthorized` automatically.
+
+The `JwtDecoder` bean validates the token signature (HMAC-SHA256) and checks the token against a blacklist on every request. If the token has been revoked via logout, a `401` is returned.
+
+### `OpenApiConfig.java`
+Configures Swagger UI to show an **Authorize** button, allowing you to paste your JWT token and test secured endpoints directly from the browser.
 
 ---
 
-## Step 3 — Models
+## Step 3 — Security
+
+### `JwtService.java`
+Handles token creation. When a user logs in, it generates:
+- An **access token** (JWT signed with HMAC-SHA256, expires in 1 hour) — contains `sub` (username) and `jti` (unique token ID for blacklisting)
+- A **refresh token** (opaque UUID, expires in 7 days) — stored in `TokenStore`
+
+### `JwtProperties.java`
+Type-safe configuration binding for JWT settings via `@ConfigurationProperties(prefix = "app.jwt")`:
+
+```yaml
+app:
+  jwt:
+    secret: "insurance-application-jwt-secret-key-2026"
+    expiration: PT1H
+    refresh-expiration: P7D
+```
+
+### `TokenStore.java`
+In-memory store with two responsibilities:
+- **Refresh tokens** — maps opaque UUIDs to username + expiry time
+- **Blacklist** — stores JTI values of revoked access tokens (populated on logout)
+
+---
+
+## Step 4 — Models
 
 Two pairs of classes exist — one for each resource:
 
@@ -74,7 +121,7 @@ The `External` versions represent what WireMock returns. Since WireMock responds
 
 ---
 
-## Step 4 — Services
+## Step 5 — Services
 
 This is where the actual logic lives. Services call WireMock via `RestClient` and map the results.
 
@@ -88,19 +135,35 @@ This is where the actual logic lives. Services call WireMock via `RestClient` an
 | `getClaims(policyId, nationalId)` | Verifies ownership, then calls `GET /polizas/{policyId}/siniestros` on WireMock |
 | `checkOwnership(policyId, nationalId)` | Fetches all the user's policies and checks the requested one belongs to them. Throws `403` if not |
 
-The `toPolicy()` and `toClaim()` private methods map from the `External` DTOs to the internal models.
-
 ### `ClaimService.java`
 
 | Method | What it does |
 |---|---|
 | `getClaimById(claimId)` | Calls `GET /siniestros/{claimId}` on WireMock |
 
+### `PolicyCacheService.java`
+
+The cached logic lives in a dedicated service rather than in `PolicyService`. This is necessary because Spring caching works through proxies — if a method calls another method within the same class, the proxy is bypassed and the cache is skipped.
+
 ---
 
-## Step 5 — Controllers
+## Step 6 — Controllers
 
-Controllers receive HTTP requests and delegate to services. They also extract the authenticated user's identity from `Principal`.
+Controllers receive HTTP requests and delegate to services. They extract the authenticated user's username from the `Jwt` principal injected by Spring Security.
+
+### `AuthController.java` — base path `/auth`
+
+| Endpoint | What it does |
+|---|---|
+| `POST /auth/login` | Accepts `{"username":"..."}`, returns `accessToken` + `refreshToken` |
+| `POST /auth/refresh` | Accepts `{"refreshToken":"..."}`, returns a new `accessToken` |
+| `POST /auth/logout` | Accepts `{"refreshToken":"..."}`, blacklists the current access token server-side |
+
+### `UserController.java` — base path `/user`
+
+| Endpoint | What it does |
+|---|---|
+| `GET /user` | Returns `{"name":"<username>"}` for the authenticated user |
 
 ### `PolicyController.java` — base path `/policies`
 
@@ -111,8 +174,6 @@ Controllers receive HTTP requests and delegate to services. They also extract th
 | `GET /policies/{policyId}/conditions` | Gets the policy's conditions (ownership verified) |
 | `GET /policies/{policyId}/claims` | Gets claims linked to a policy (ownership verified) |
 
-`Principal` is injected by Spring Security automatically — it represents the logged-in user. `principal.getName()` returns the username, which in this case is the national ID.
-
 ### `ClaimController.java` — base path `/claims`
 
 | Endpoint | What it does |
@@ -121,7 +182,7 @@ Controllers receive HTTP requests and delegate to services. They also extract th
 
 ---
 
-## Step 6 — Error handling
+## Step 7 — Error handling
 
 ### Custom exceptions
 
@@ -137,10 +198,11 @@ A `@RestControllerAdvice` that intercepts exceptions thrown anywhere in the app 
 | `ResourceNotFoundException` | `404 Not Found` |
 | `UpstreamServiceException` | `502 Bad Gateway` |
 | `ResponseStatusException` | Whatever status the exception carries (e.g. `403`) |
+| `RequestNotPermitted` | `429 Too Many Requests` |
 
 ---
 
-## Step 7 — Caching
+## Step 8 — Caching
 
 ### Why caching is needed
 
@@ -150,15 +212,9 @@ Every request that requires ownership verification calls `getPoliciesByNationalI
 
 Spring Boot's built-in caching is enabled with `@EnableCaching` on `InsuranceApplication`. The `@Cacheable` annotation on a method stores the result the first time it is called. On subsequent calls with the same arguments, the stored result is returned directly without calling WireMock.
 
-### `PolicyCacheService.java`
-
-The cached logic lives in a dedicated service rather than in `PolicyService`. This is necessary because Spring caching works through proxies — if a method calls another method within the same class, the proxy is bypassed and the cache is skipped. By extracting `getPoliciesByNationalId` into its own class, every call goes through the proxy correctly.
-
 | Method | Cache name | Cache key |
 |---|---|---|
 | `getPoliciesByNationalId(nationalId)` | `policies` | `nationalId` |
-
-`PolicyService` delegates to `PolicyCacheService` for both the controller-facing `getPoliciesByNationalId` and the internal `checkOwnership` call, ensuring both benefit from the same cache entry.
 
 ### Cache flow
 
@@ -191,7 +247,7 @@ spring:
 
 ---
 
-## Step 8 — Circuit breaking
+## Step 9 — Circuit breaking
 
 ### Why circuit breaking is needed
 
@@ -237,14 +293,34 @@ CLOSED (normal) ──── failure rate > 50% ──→ OPEN (rejects all call
                                        CLOSED         OPEN
 ```
 
-### Dependency
+---
 
-```xml
-<dependency>
-    <groupId>org.springframework.cloud</groupId>
-    <artifactId>spring-cloud-starter-circuitbreaker-resilience4j</artifactId>
-</dependency>
+## Step 10 — Rate limiting
+
+Login attempts are rate-limited using Resilience4j's `@RateLimiter`. The `login` endpoint allows a maximum of **5 requests per minute per instance**. Exceeding the limit returns `429 Too Many Requests`.
+
+```yaml
+resilience4j:
+  ratelimiter:
+    instances:
+      login:
+        limit-for-period: 5
+        limit-refresh-period: 1m
+        timeout-duration: 0
 ```
+
+---
+
+## Step 11 — Actuator & metrics
+
+Spring Boot Actuator exposes health and metrics endpoints:
+
+| Endpoint | What it shows |
+|---|---|
+| `GET /actuator/health` | Application health + circuit breaker state |
+| `GET /actuator/metrics` | Available metric names |
+| `GET /actuator/prometheus` | Prometheus-format metrics (for scraping) |
+| `GET /actuator/info` | Application info |
 
 ---
 
@@ -254,10 +330,13 @@ CLOSED (normal) ──── failure rate > 50% ──→ OPEN (rejects all call
 Client
   │
   ▼
-Spring Security ──── no credentials ──→ 401
+Spring Security ──── no/invalid token ──→ 401
   │
   ▼
-Controller  (extracts national ID from Principal)
+Rate Limiter (login only) ──── limit exceeded ──→ 429
+  │
+  ▼
+Controller  (extracts username from Jwt principal)
   │
   ▼
 Service  (checkOwnership if needed) ──── not owner ──→ 403
@@ -281,21 +360,52 @@ Response mapped and returned to client as JSON
 
 1. Start WireMock on port `8081`
 2. Run the Spring Boot application on port `8080`
-3. Make authenticated requests using HTTP Basic Auth
+3. Obtain a JWT token and use it in subsequent requests
 
 ```bash
-# Get all policies for the logged-in user
-curl -u 12345678A:password http://localhost:8080/policies
+# 1. Login — get an access token and a refresh token
+curl -s -X POST http://localhost:8080/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"senkroh"}'
 
-# Get a specific policy
-curl -u 12345678A:password http://localhost:8080/policies/{policyId}
+# 2. Export the access token for reuse
+export TOKEN=$(curl -s -X POST http://localhost:8080/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"senkroh"}' | jq -r '.accessToken')
 
-# Get policy conditions
-curl -u 12345678A:password http://localhost:8080/policies/{policyId}/conditions
+# 3. Get all policies for the logged-in user
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/policies
 
-# Get claims for a policy
-curl -u 12345678A:password http://localhost:8080/policies/{policyId}/claims
+# 4. Get a specific policy
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/policies/{policyId}
 
-# Get a specific claim
-curl -u 12345678A:password http://localhost:8080/claims/{claimId}
+# 5. Get policy conditions
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/policies/{policyId}/conditions
+
+# 6. Get claims for a policy
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/policies/{policyId}/claims
+
+# 7. Get a specific claim
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/claims/{claimId}
+
+# 8. Refresh access token
+curl -s -X POST http://localhost:8080/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"refreshToken":"<your-refresh-token>"}'
+
+# 9. Logout (blacklists the current access token)
+curl -s -X POST http://localhost:8080/auth/logout \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"refreshToken":"<your-refresh-token>"}'
 ```
+
+## API Documentation (Swagger UI)
+
+With the application running, open:
+
+```
+http://localhost:8080/swagger-ui.html
+```
+
+Click **Authorize**, paste your JWT token, and test all endpoints directly from the browser.
